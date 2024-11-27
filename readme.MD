@@ -5,6 +5,7 @@ but there are many tools that work exclusively with the OpenAI API.
 
 This project provides a personal OpenAI-compatible endpoint for free.
 
+
 ## Serverless?
 
 Although it runs in the cloud, it does not require server maintenance.
@@ -15,19 +16,21 @@ It can be easily deployed to various providers for free
 > Running the proxy endpoint locally is also an option,
 > though it's more appropriate for development use.
 
+
 ## How to start
 
 You will need a personal Google [API key](https://makersuite.google.com/app/apikey).
 
 > [!IMPORTANT]
-> Even if you are located outside of the [supported regions](https://ai.google.dev/available_regions#available_regions)
-> (e.g., in Europe), it is still possible to acquire one using a VPN.
+> Even if you are located outside of the [supported regions](https://ai.google.dev/gemini-api/docs/available-regions#available_regions),
+> it is still possible to acquire one using a VPN.
 
 Deploy the project to one of the providers, using the instructions below.
 You will need to set up an account there.
 
 If you opt for “button-deploy”, you'll be guided through the process of forking the repository first,
 which is necessary for continuous integration (CI).
+
 
 ### Deploy with Vercel
 
@@ -36,6 +39,7 @@ which is necessary for continuous integration (CI).
   `vercel deploy`
 - Serve locally: `vercel dev`
 - Vercel _Functions_ [limitations](https://vercel.com/docs/functions/limitations) (with _Edge_ runtime)
+
 
 ### Deploy to Netlify
 
@@ -49,6 +53,7 @@ which is necessary for continuous integration (CI).
   - `/edge/v1`  
     _Edge functions_ [limits](https://docs.netlify.com/edge-functions/limits/)
 
+
 ### Deploy to Cloudflare
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/PublicAffairs/openai-gemini)
@@ -58,6 +63,26 @@ which is necessary for continuous integration (CI).
   `wrangler deploy`
 - Serve locally: `wrangler dev`
 - _Worker_ [limits](https://developers.cloudflare.com/workers/platform/limits/#worker-limits)
+
+
+### Deploy to Deno
+
+See details [here](https://github.com/PublicAffairs/openai-gemini/discussions/19).
+
+
+### Serve locally - with Node, Deno, Bun
+
+Only for Node: `npm install`.
+
+Then `npm run start` / `npm run start:deno` / `npm run start:bun`.
+
+
+#### Dev mode (watch source changes)
+
+Only for Node: `npm install --include=dev`
+
+Then: `npm run dev` / `npm run dev:deno` / `npm run dev:bun`.
+
 
 ## How to use
 If you open your newly-deployed site in a browser, you will only see a `404 Not Found` message. This is expected, as the API is not designed for direct browser access.
@@ -70,25 +95,43 @@ To utilize it, you should enter your API address and your Gemini API key into th
 Typically, you should specify the API base in this format:  
 `https://my-super-proxy.vercel.app/v1`
 
-However, some software may expect it without the `/v1` ending:  
-`https://my-super-proxy.vercel.app`
-
 The relevant field may be labeled as "_OpenAI proxy_".
 You might need to look under "_Advanced settings_" or similar sections.
 Alternatively, it could be in some config file (check the relevant documentation for details).
 
 For some command-line tools, you may need to set an environment variable, _e.g._:
 ```sh
-set OPENAI_BASE_URL=https://my-super-proxy.vercel.app/v1
+OPENAI_BASE_URL="https://my-super-proxy.vercel.app/v1"
 ```
 _..or_:
 ```sh
-set OPENAI_API_BASE=https://my-super-proxy.vercel.app/v1
+OPENAI_API_BASE="https://my-super-proxy.vercel.app/v1"
 ```
+
+
+## Models
+
+Requests use the specified [model] if its name starts with "gemini-", "learnlm-", 
+or "models/". Otherwise, these defaults apply:
+
+- `chat/completions`: `gemini-1.5-pro-latest`
+- `embeddings`: `text-embedding-004`
+
+[model]: https://ai.google.dev/gemini-api/docs/models/gemini
+
+
+## Media
+
+[Vision] and [audio] input supported as per OpenAI [specs].
+Implemented via [`inlineData`](https://ai.google.dev/api/caching#Part).
+
+[vision]: https://platform.openai.com/docs/guides/vision
+[audio]: https://platform.openai.com/docs/guides/audio?audio-generation-quickstart-example=audio-in
+[specs]: https://platform.openai.com/docs/api-reference/chat/create
 
 ---
 
-## Possible further development
+## Supported API endpoints and applicable parameters
 
 - [x] `chat/completions`
 
@@ -105,25 +148,29 @@ set OPENAI_API_BASE=https://my-super-proxy.vercel.app/v1
           - [ ] `tool` (v1beta)
       - [ ] `name`
       - [ ] `tool_calls`
-  - [x] `model` _(value ignored, model is set to `gemini-1.5-pro-latest`)_
+  - [x] `model`
   - [ ] `frequency_penalty`
   - [ ] `logit_bias`
   - [ ] `logprobs`
   - [ ] `top_logprobs`
   - [x] `max_tokens`
-  - [x] `n` (`candidateCount` <8) _n.b.: atm api does not accept >1_
+  - [x] `n` (`candidateCount` <8, not for streaming)
   - [ ] `presence_penalty`
   - [x] `response_format`
   - [ ] `seed`
+  - [ ] `service_tier`
   - [x] `stop`: string|array (`stopSequences` [1,5])
-  - [x] stream
+  - [x] `stream`
+  - [ ] `stream_options`
+      - [ ] `include_usage`
   - [x] `temperature` (0.0..2.0 for OpenAI, but Gemini supports up to infinity)
   - [x] `top_p`
   - [ ] `tools` (v1beta)
   - [ ] `tool_choice` (v1beta)
+  - [ ] `parallel_tool_calls`
   - [ ] `user`
 
   </details>
 - [ ] `completions`
-- [ ] `embeddings`
-- [ ] `models`
+- [x] `embeddings`
+- [x] `models`
