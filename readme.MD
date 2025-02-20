@@ -57,7 +57,7 @@ which is necessary for continuous integration (CI).
 ### Deploy to Cloudflare
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/PublicAffairs/openai-gemini)
-- Alternatively can be deployed manually pasting content of [`src/worker.mjs`](../resize-images/src/worker.mjs)
+- Alternatively can be deployed manually pasting content of [`src/worker.mjs`](src/worker.mjs)
   to https://workers.cloudflare.com/playground (see there `Deploy` button).
 - Alternatively can be deployed with [cli](https://developers.cloudflare.com/workers/wrangler/):
   `wrangler deploy`
@@ -142,33 +142,34 @@ Implemented via [`inlineData`](https://ai.google.dev/api/caching#Part).
   - [x] `messages`
       - [x] `content`
       - [x] `role`
-          - [x] `system` (=>`system_instruction`)
-          - [x] `user`
-          - [x] `assistant`
-          - [ ] `tool` (v1beta)
+          - [x] "system" (=>`system_instruction`)
+          - [x] "user"
+          - [x] "assistant"
+          - [ ] "tool" (v1beta)
       - [ ] `name`
       - [ ] `tool_calls`
   - [x] `model`
-  - [ ] `frequency_penalty`
+  - [x] `frequency_penalty`
   - [ ] `logit_bias`
   - [ ] `logprobs`
   - [ ] `top_logprobs`
-  - [x] `max_tokens`
+  - [x] `max_tokens`, `max_completion_tokens`
   - [x] `n` (`candidateCount` <8, not for streaming)
-  - [ ] `presence_penalty`
+  - [x] `presence_penalty`
   - [x] `response_format`
+      - [x] "json_object"
+      - [x] "json_schema" (a select subset of an OpenAPI 3.0 schema object)
+      - [x] "text"
   - [ ] `seed`
-  - [ ] `service_tier`
   - [x] `stop`: string|array (`stopSequences` [1,5])
   - [x] `stream`
-  - [ ] `stream_options`
-      - [ ] `include_usage`
+  - [x] `stream_options`
+      - [x] `include_usage`
   - [x] `temperature` (0.0..2.0 for OpenAI, but Gemini supports up to infinity)
   - [x] `top_p`
   - [ ] `tools` (v1beta)
   - [ ] `tool_choice` (v1beta)
   - [ ] `parallel_tool_calls`
-  - [ ] `user`
 
   </details>
 - [ ] `completions`

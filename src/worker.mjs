@@ -1,5 +1,4 @@
 import { Buffer } from "node:buffer";
-// alt: import { base64url } from "rfc4648";
 
 export default {
   async fetch (request) {
@@ -8,14 +7,11 @@ export default {
     }
     const errHandler = (err) => {
       console.error(err);
-      return new Response(err.message, { status: err.status ?? 500, headers: fixCors() });
+      return new Response(err.message, fixCors({ status: err.status ?? 500 }));
     };
     try {
       const auth = request.headers.get("Authorization");
       const apiKey = auth?.split(" ")[1];
-      if (!apiKey) {
-        throw new HttpError("Bad credentials", 401);
-      }
       const assert = (success) => {
         if (!success) {
           throw new HttpError("The specified HTTP method is not allowed for the requested resource", 400);
@@ -52,10 +48,10 @@ class HttpError extends Error {
   }
 }
 
-const fixCors = (headers) => {
+const fixCors = ({ headers, status, statusText }) => {
   headers = new Headers(headers);
   headers.set("Access-Control-Allow-Origin", "*");
-  return headers;
+  return { headers, status, statusText };
 };
 
 const handleOPTIONS = async () => {
@@ -70,15 +66,18 @@ const handleOPTIONS = async () => {
 
 const BASE_URL = "https://generativelanguage.googleapis.com";
 const API_VERSION = "v1beta";
+
 // https://github.com/google-gemini/generative-ai-js/blob/cf223ff4a1ee5a2d944c53cddb8976136382bee6/src/requests/request.ts#L71
-const API_CLIENT = "genai-js/0.19.0"; // npm view @google/generative-ai version
+const API_CLIENT = "genai-js/0.21.0"; // npm view @google/generative-ai version
+const makeHeaders = (apiKey, more) => ({
+  "x-goog-api-client": API_CLIENT,
+  ...(apiKey && { "x-goog-api-key": apiKey }),
+  ...more
+});
 
 async function handleModels (apiKey) {
   const response = await fetch(`${BASE_URL}/${API_VERSION}/models`, {
-    headers: {
-      "x-goog-api-key": apiKey,
-      "x-goog-api-client": API_CLIENT,
-    },
+    headers: makeHeaders(apiKey),
   });
   let { body } = response;
   if (response.ok) {
@@ -93,7 +92,7 @@ async function handleModels (apiKey) {
       })),
     }, null, "  ");
   }
-  return new Response(body, { ...response, headers: fixCors(response.headers) });
+  return new Response(body, fixCors(response));
 }
 
 const DEFAULT_EMBEDDINGS_MODEL = "text-embedding-004";
@@ -113,11 +112,7 @@ async function handleEmbeddings (req, apiKey) {
   }
   const response = await fetch(`${BASE_URL}/${API_VERSION}/${model}:batchEmbedContents`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": apiKey,
-      "x-goog-api-client": API_CLIENT,
-    },
+    headers: makeHeaders(apiKey, { "Content-Type": "application/json" }),
     body: JSON.stringify({
       "requests": req.input.map(text => ({
         model,
@@ -139,18 +134,18 @@ async function handleEmbeddings (req, apiKey) {
       model: req.model,
     }, null, "  ");
   }
-  return new Response(body, { ...response, headers: fixCors(response.headers) });
+  return new Response(body, fixCors(response));
 }
 
 const DEFAULT_MODEL = "gemini-1.5-pro-latest";
 async function handleCompletions (req, apiKey) {
   let model = DEFAULT_MODEL;
-  /* eslint-disable no-fallthrough */
   switch(true) {
     case typeof req.model !== "string":
       break;
     case req.model.startsWith("models/"):
       model = req.model.substring(7);
+      break;
     case req.model.startsWith("gemini-"):
     case req.model.startsWith("learnlm-"):
       model = req.model;
@@ -160,11 +155,7 @@ async function handleCompletions (req, apiKey) {
   if (req.stream) { url += "?alt=sse"; }
   const response = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": apiKey,
-      "x-goog-api-client": API_CLIENT,
-    },
+    headers: makeHeaders(apiKey, { "Content-Type": "application/json" }),
     body: JSON.stringify(await transformRequest(req)), // try
   });
 
@@ -182,6 +173,7 @@ async function handleCompletions (req, apiKey) {
         .pipeThrough(new TransformStream({
           transform: toOpenAiStream,
           flush: toOpenAiStreamFlush,
+          streamIncludeUsage: req.stream_options?.include_usage,
           model, id, last: [],
         }))
         .pipeThrough(new TextEncoderStream());
@@ -190,7 +182,7 @@ async function handleCompletions (req, apiKey) {
       body = processCompletionsResponse(JSON.parse(body), model, id);
     }
   }
-  return new Response(body, { ...response, headers: fixCors(response.headers) });
+  return new Response(body, fixCors(response));
 }
 
 const harmCategory = [
@@ -206,11 +198,14 @@ const safetySettings = harmCategory.map(category => ({
 }));
 const fieldsMap = {
   stop: "stopSequences",
-  n: "candidateCount", // { "error": { "code": 400, "message": "Only one candidate can be specified", "status": "INVALID_ARGUMENT" } }
+  n: "candidateCount", // not for streaming
   max_tokens: "maxOutputTokens",
+  max_completion_tokens: "maxOutputTokens",
   temperature: "temperature",
   top_p: "topP",
-  //..."topK"
+  top_k: "topK", // non-standard
+  frequency_penalty: "frequencyPenalty",
+  presence_penalty: "presencePenalty",
 };
 const transformConfig = (req) => {
   let cfg = {};
@@ -221,8 +216,24 @@ const transformConfig = (req) => {
       cfg[matchedKey] = req[key];
     }
   }
-  if (req.response_format?.type === "json_object") {
-    cfg.response_mime_type = "application/json";
+  if (req.response_format) {
+    switch(req.response_format.type) {
+      case "json_schema":
+        cfg.responseSchema = req.response_format.json_schema?.schema;
+        if (cfg.responseSchema && "enum" in cfg.responseSchema) {
+          cfg.responseMimeType = "text/x.enum";
+          break;
+        }
+        // eslint-disable-next-line no-fallthrough
+      case "json_object":
+        cfg.responseMimeType = "application/json";
+        break;
+      case "text":
+        cfg.responseMimeType = "text/plain";
+        break;
+      default:
+        throw new HttpError("Unsupported response_format.type", 400);
+    }
   }
   return cfg;
 };
@@ -287,6 +298,9 @@ const transformMsg = async ({ role, content }) => {
         throw new TypeError(`Unknown "content" item type: "${item.type}"`);
     }
   }
+  if (content.every(item => item.type === "image_url")) {
+    parts.push({ text: "" }); // to avoid "Unable to submit request because it must have a text parameter"
+  }
   return { role, parts };
 };
 
@@ -331,9 +345,12 @@ const reasonsMap = { //https://ai.google.dev/api/rest/v1/GenerateContentResponse
   //"OTHER": "OTHER",
   // :"function_call",
 };
+const SEP = "\n\n|>";
 const transformCandidates = (key, cand) => ({
   index: cand.index || 0, // 0-index is absent in new -002 models response
-  [key]: { role: "assistant", content: cand.content?.parts[0].text },
+  [key]: {
+    role: "assistant",
+    content: cand.content?.parts.map(p => p.text).join(SEP) },
   logprobs: null,
   finish_reason: reasonsMap[cand.finishReason] || cand.finishReason,
 });
@@ -389,8 +406,8 @@ function transformResponseStream (data, stop, first) {
     //system_fingerprint: "fp_69829325d0",
     object: "chat.completion.chunk",
   };
-  if (stop && data.usageMetadata) {
-    output.usage = transformUsage(data.usageMetadata);
+  if (data.usageMetadata && this.streamIncludeUsage) {
+    output.usage = stop ? transformUsage(data.usageMetadata) : null;
   }
   return "data: " + JSON.stringify(output) + delimiter;
 }
@@ -413,7 +430,8 @@ async function toOpenAiStream (chunk, controller) {
     }));
     data = { candidates };
   }
-  const cand = data.candidates[0]; // !!untested with candidateCount>1
+  const cand = data.candidates[0];
+  console.assert(data.candidates.length === 1, "Unexpected candidates count: %d", data.candidates.length);
   cand.index = cand.index || 0; // absent in new -002 models response
   if (!this.last[cand.index]) {
     controller.enqueue(transform(data, false, "first"));
